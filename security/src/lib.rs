@@ -9,6 +9,10 @@ pub mod dpi_bypass;
 pub mod detection_evasion;
 pub mod config;
 pub mod error;
+pub mod ffi;  // FFI module for C/Go interoperability
+pub mod tls_fragmentation;  // TLS ClientHello fragmentation
+pub mod sni_obfuscation;  // SNI obfuscation
+pub mod dynamic_patterns;  // Dynamic pattern rotation
 
 pub use error::{Error, Result};
 
@@ -50,15 +54,18 @@ impl SecurityProcessor {
 
     /// Create a new security processor with custom configuration
     pub fn with_config(config: SecurityConfig) -> Result<Self> {
+        let pattern_rotation_interval = config.pattern_rotation_interval_hours;
+        let max_adaptation_level = config.max_adaptation_level;
+
         Ok(SecurityProcessor {
             config,
             obfuscator: obfuscation::Obfuscator::new(),
             pattern_rotator: pattern_rotation::PatternRotator::new(
-                config.pattern_rotation_interval_hours,
+                pattern_rotation_interval,
             ),
             dpi_bypasser: dpi_bypass::DPIBypass::new(),
             detection_evader: detection_evasion::DetectionEvader::new(
-                config.max_adaptation_level,
+                max_adaptation_level,
             ),
         })
     }
@@ -116,12 +123,15 @@ impl SecurityProcessor {
 
     /// Update configuration dynamically
     pub fn update_config(&mut self, config: SecurityConfig) -> Result<()> {
+        let pattern_rotation_interval = config.pattern_rotation_interval_hours;
+        let max_adaptation_level = config.max_adaptation_level;
+
         self.config = config;
         self.pattern_rotator = pattern_rotation::PatternRotator::new(
-            config.pattern_rotation_interval_hours,
+            pattern_rotation_interval,
         );
         self.detection_evader = detection_evasion::DetectionEvader::new(
-            config.max_adaptation_level,
+            max_adaptation_level,
         );
         Ok(())
     }

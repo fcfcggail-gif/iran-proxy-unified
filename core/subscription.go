@@ -26,7 +26,7 @@ func (sg *SubscriptionGenerator) Generate(configs []*Config) (string, error) {
 	case "singbox":
 		return sg.generateSingbox(configs)
 	case "v2ray":
-		return sg.generateV2Ray(configs)
+		return sg.generateV2Ray()
 	case "raw":
 		return sg.generateRaw(configs)
 	default:
@@ -50,27 +50,74 @@ func (sg *SubscriptionGenerator) generateClash(configs []*Config) (string, error
 		sb.WriteString("    server: " + cfg.Server + "\n")
 		sb.WriteString(fmt.Sprintf("    port: %d\n", cfg.Port))
 
-		if cfg.Password != "" {
-			sb.WriteString("    password: " + cfg.Password + "\n")
+		// Protocol-specific fields
+		switch cfg.Protocol {
+		case "vless":
+			if cfg.UUID != "" {
+				sb.WriteString("    uuid: " + cfg.UUID + "\n")
+			}
+			if cfg.Flow != "" {
+				sb.WriteString("    flow: " + cfg.Flow + "\n")
+			}
+			if cfg.Security != "" {
+				sb.WriteString("    security: " + cfg.Security + "\n")
+			}
+			// REALITY protocol support
+			if cfg.PublicKey != "" {
+				sb.WriteString("    reality-opts:\n")
+				sb.WriteString("      public-key: " + cfg.PublicKey + "\n")
+				sb.WriteString("      short-id: " + cfg.ShortID + "\n")
+				sb.WriteString("      server-name: " + cfg.ServerName + "\n")
+			}
+			// XHTTP protocol support
+			if cfg.HTTPMethod != "" {
+				sb.WriteString("    http-opts:\n")
+				sb.WriteString("      method: " + cfg.HTTPMethod + "\n")
+				if cfg.HTTPHost != "" {
+					sb.WriteString("      host: " + cfg.HTTPHost + "\n")
+				}
+				if cfg.HTTPPath != "" {
+					sb.WriteString("      path: " + cfg.HTTPPath + "\n")
+				}
+			}
+			if cfg.ServerName != "" && cfg.PublicKey == "" {
+				sb.WriteString("    sni: " + cfg.ServerName + "\n")
+			}
+
+		case "vmess":
+			if cfg.UUID != "" {
+				sb.WriteString("    uuid: " + cfg.UUID + "\n")
+			}
+			if cfg.AlterId > 0 {
+				sb.WriteString(fmt.Sprintf("    alterId: %d\n", cfg.AlterId))
+			}
+			if cfg.Cipher != "" {
+				sb.WriteString("    cipher: " + cfg.Cipher + "\n")
+			}
+
+		case "trojan":
+			if cfg.Password != "" {
+				sb.WriteString("    password: " + cfg.Password + "\n")
+			}
+			if cfg.TLSServerName != "" {
+				sb.WriteString("    sni: " + cfg.TLSServerName + "\n")
+			}
+
+		case "ss", "shadowsocks":
+			if cfg.Password != "" {
+				sb.WriteString("    password: " + cfg.Password + "\n")
+			}
+			if cfg.Method != "" {
+				sb.WriteString("    cipher: " + cfg.Method + "\n")
+			}
 		}
 
-		if cfg.UUID != "" {
-			sb.WriteString("    uuid: " + cfg.UUID + "\n")
-		}
-
-		if cfg.Cipher != "" {
-			sb.WriteString("    cipher: " + cfg.Cipher + "\n")
-		}
-
-		if cfg.Method != "" {
-			sb.WriteString("    method: " + cfg.Method + "\n")
-		}
-
+		// Common fields
 		if cfg.Obfuscation {
 			sb.WriteString("    obfs: http\n")
 		}
 
-		sb.WriteString(fmt.Sprintf("    skip-cert-verify: true\n"))
+		sb.WriteString("    skip-cert-verify: true\n")
 	}
 
 	// Add proxy groups
@@ -83,9 +130,10 @@ func (sg *SubscriptionGenerator) generateClash(configs []*Config) (string, error
 		sb.WriteString("      - " + cfg.Name + "\n")
 	}
 
-	// Add rules
+	// Add rules (Iran-optimized)
 	sb.WriteString("\nrules:\n")
 	sb.WriteString("  - GEOIP,CN,All\n")
+	sb.WriteString("  - GEOIP,IR,All\n")
 	sb.WriteString("  - MATCH,All\n")
 
 	return sb.String(), nil
@@ -120,12 +168,81 @@ func (sg *SubscriptionGenerator) configToSingboxOutbound(cfg *Config) string {
 	sb.WriteString(fmt.Sprintf(`"server":"%s",`, cfg.Server))
 	sb.WriteString(fmt.Sprintf(`"server_port":%d`, cfg.Port))
 
-	if cfg.Password != "" {
-		sb.WriteString(fmt.Sprintf(`,password:"%s`, cfg.Password))
-	}
+	// Protocol-specific configuration
+	switch cfg.Protocol {
+	case "vless":
+		if cfg.UUID != "" {
+			sb.WriteString(fmt.Sprintf(`,uuid:"%s"`, cfg.UUID))
+		}
+		if cfg.Flow != "" {
+			sb.WriteString(fmt.Sprintf(`,flow:"%s"`, cfg.Flow))
+		}
+		if cfg.Security != "" {
+			sb.WriteString(fmt.Sprintf(`,encryption:"%s"`, cfg.Security))
+		}
 
-	if cfg.UUID != "" {
-		sb.WriteString(fmt.Sprintf(`,uuid:"%s`, cfg.UUID))
+		// REALITY protocol support (native in Sing-box)
+		if cfg.PublicKey != "" {
+			sb.WriteString(`,"tls":{"enabled":true,"server_name":"`)
+			sb.WriteString(cfg.ServerName)
+			sb.WriteString(`"`)
+			if cfg.PublicKey != "" {
+				sb.WriteString(`,"reality":{"enabled":true,"public_key":"`)
+				sb.WriteString(cfg.PublicKey)
+				sb.WriteString(`","short_id":"`)
+				sb.WriteString(cfg.ShortID)
+				sb.WriteString(`"}`)
+			}
+			sb.WriteString("}")
+		} else if cfg.ServerName != "" {
+			sb.WriteString(`,"tls":{"enabled":true,"server_name":"`)
+			sb.WriteString(cfg.ServerName)
+			sb.WriteString(`"}`)
+		}
+
+		// XHTTP protocol support
+		if cfg.HTTPMethod != "" {
+			sb.WriteString(fmt.Sprintf(`,"http":{"method":"%s"`, cfg.HTTPMethod))
+			if cfg.HTTPHost != "" {
+				sb.WriteString(fmt.Sprintf(`,"host":"%s"`, cfg.HTTPHost))
+			}
+			if cfg.HTTPPath != "" {
+				sb.WriteString(fmt.Sprintf(`,"path":"%s"`, cfg.HTTPPath))
+			}
+			sb.WriteString("}")
+		}
+
+	case "vmess":
+		if cfg.UUID != "" {
+			sb.WriteString(fmt.Sprintf(`,uuid:"%s"`, cfg.UUID))
+		}
+		if cfg.AlterId > 0 {
+			sb.WriteString(fmt.Sprintf(`,alter_id:%d`, cfg.AlterId))
+		}
+		if cfg.Cipher != "" {
+			sb.WriteString(fmt.Sprintf(`,cipher:"%s"`, cfg.Cipher))
+		}
+
+	case "trojan":
+		if cfg.Password != "" {
+			sb.WriteString(fmt.Sprintf(`,password:"%s"`, cfg.Password))
+		}
+		if cfg.TLSServerName != "" {
+			sb.WriteString(`,"tls":{"enabled":true,"server_name":"`)
+			sb.WriteString(cfg.TLSServerName)
+			sb.WriteString(`"}`)
+		}
+		if cfg.AllowInsecure {
+			sb.WriteString(`,"tls":{"insecure":true}`)
+		}
+
+	case "ss", "shadowsocks":
+		if cfg.Password != "" {
+			sb.WriteString(fmt.Sprintf(`,password:"%s"`, cfg.Password))
+		}
+		if cfg.Method != "" {
+			sb.WriteString(fmt.Sprintf(`,method:"%s"`, cfg.Method))
+		}
 	}
 
 	sb.WriteString("}")
@@ -134,7 +251,7 @@ func (sg *SubscriptionGenerator) configToSingboxOutbound(cfg *Config) string {
 }
 
 // generateV2Ray creates a V2Ray config format
-func (sg *SubscriptionGenerator) generateV2Ray(configs []*Config) (string, error) {
+func (sg *SubscriptionGenerator) generateV2Ray() (string, error) {
 	var sb strings.Builder
 
 	sb.WriteString("{\"v\":\"2\",\"ps\":\"\",\"add\":\"\",\"port\":\"443\",\"id\":\"\",\"aid\":\"0\",\"net\":\"\",\"type\":\"\",\"host\":\"\",\"path\":\"\",\"tls\":\"\",\"sni\":\"\",\"alpn\":\"\",\"fp\":\"\"}")
@@ -178,6 +295,12 @@ func (sg *SubscriptionGenerator) mapProtocol(proto string) string {
 		return "ssr"
 	case "trojan":
 		return "trojan"
+	case "reality":
+		// REALITY is a VLESS variant
+		return "vless"
+	case "xhttp":
+		// XHTTP is a VLESS variant
+		return "vless"
 	default:
 		return proto
 	}

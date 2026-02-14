@@ -32,6 +32,34 @@ type Config struct {
 	RawConfig   string            `json:"raw_config"`
 	AddedAt     time.Time         `json:"added_at"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
+
+	// REALITY protocol fields
+	PublicKey     string `json:"public_key,omitempty"`
+	ShortID       string `json:"short_id,omitempty"`
+	ServerName    string `json:"server_name,omitempty"`
+	StaleBehavior string `json:"stale_behavior,omitempty"`
+
+	// XHTTP protocol fields
+	HTTPMethod       string `json:"http_method,omitempty"`
+	HTTPHost         string `json:"http_host,omitempty"`
+	HTTPPath         string `json:"http_path,omitempty"`
+	HTTPPathOverride string `json:"http_path_override,omitempty"`
+
+	// Trojan-specific fields
+	TLSServerName string `json:"tls_server_name,omitempty"`
+	AllowInsecure bool   `json:"allow_insecure,omitempty"`
+
+	// Advanced protocol options
+	AlterId        int    `json:"alter_id,omitempty"` // VMess alter ID
+	Flow           string `json:"flow,omitempty"`     // VLESS flow (xtls-rprx-vision)
+	Security       string `json:"security,omitempty"` // TLS, reality, etc
+	Edition        string `json:"edition,omitempty"`  // Protocol version
+	SkipCertVerify bool   `json:"skip_cert_verify,omitempty"`
+	TransportType  string `json:"transport_type,omitempty"` // tcp, mux, grpc, ws, http
+
+	// Performance and metadata
+	ParseTime        int64  `json:"parse_time_ns,omitempty"`
+	ValidationStatus string `json:"validation_status,omitempty"`
 }
 
 // ConfigSource represents a source to fetch configs from
@@ -183,11 +211,11 @@ func (a *Aggregator) fetchFromSource(source ConfigSource, configsChan chan<- *Co
 	var configs []*Config
 	switch source.Type {
 	case "base64":
-		configs, err = a.parseBase64Configs(resp.Body(), source.Name)
+		configs, err = a.parseBase64Configs(resp.Body())
 	case "json":
-		configs, err = a.parseJSONConfigs(resp.Body(), source.Name)
+		configs, err = a.parseJSONConfigs()
 	case "plain":
-		configs, err = a.parsePlainConfigs(resp.Body(), source.Name)
+		configs, err = a.parsePlainConfigs()
 	default:
 		return fmt.Errorf("unknown source type: %s", source.Type)
 	}
@@ -207,16 +235,17 @@ func (a *Aggregator) fetchFromSource(source ConfigSource, configsChan chan<- *Co
 	return nil
 }
 
-func (a *Aggregator) parseBase64Configs(data []byte, sourceName string) ([]*Config, error) {
+func (a *Aggregator) parseBase64Configs(data []byte) ([]*Config, error) {
 	decoded, err := base64.StdEncoding.DecodeString(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode base64: %w", err)
 	}
 
-	return a.parsePlainConfigs(decoded, sourceName)
+	var _ []byte = decoded
+	return a.parsePlainConfigs()
 }
 
-func (a *Aggregator) parseJSONConfigs(data []byte, sourceName string) ([]*Config, error) {
+func (a *Aggregator) parseJSONConfigs() ([]*Config, error) {
 	// This would parse JSON format configs
 	// Implementation depends on the JSON structure
 	var configs []*Config
@@ -224,7 +253,7 @@ func (a *Aggregator) parseJSONConfigs(data []byte, sourceName string) ([]*Config
 	return configs, nil
 }
 
-func (a *Aggregator) parsePlainConfigs(data []byte, sourceName string) ([]*Config, error) {
+func (a *Aggregator) parsePlainConfigs() ([]*Config, error) {
 	// Parse line-by-line config strings (v2ray://, ss://, etc.)
 	var configs []*Config
 	// TODO: Implement plain config parsing

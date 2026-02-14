@@ -133,10 +133,10 @@ impl DetectionEvader {
         let mut result = data.to_vec();
 
         // Decoy traffic that looks like normal HTTPS
-        let decoy_patterns = vec![
+        let decoy_patterns: Vec<&[u8]> = vec![
             b"GET / HTTP/1.1\r\nHost: example.com\r\n",
-            b"POST /api HTTP/1.1\r\nContent-Type: application/json\r\n",
-            b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n",
+            b"POST /api HTTP/1.1\r\nType: json\r\n",
+            b"HTTP/1.1 200 OK\r\nType: html\r\n",
         ];
 
         // Insert decoy traffic at random positions
