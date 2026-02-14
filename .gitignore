@@ -1,0 +1,102 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Build directories
+/core/aggregator
+/core/aggregator.exe
+/security/target/
+dist/
+build/
+
+# Rust
+Cargo.lock
+/target/
+
+# Go
+go.sum
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Logs
+*.log
+logs/
+
+# Subscriptions (generated files)
+subscriptions/
+*.txt
+*.json
+*.yaml
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Cache files
+.cache/
+*.cache
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# GitHub Actions
+.github/workflows/.secret
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests
+*.cover
+.coverage
+htmlcov/
+.tox/
+
+# Misc
+.TODO
+.DS_Store
+*.orig

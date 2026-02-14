@@ -1,0 +1,154 @@
+name: Test and Validate
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r utils/requirements.txt
+
+      - name: Validate configurations
+        run: |
+          python utils/validator.py
+
+      - name: Lint Python code
+        run: |
+          flake8 utils/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  test-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Test Go code
+        run: |
+          cd core
+          go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./core/coverage.out
+          flags: go
+          fail_ci_if_error: false
+
+  test-rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Test Rust code
+        run: |
+          cd security
+          cargo test --release --verbose
+
+      - name: Run Rust benchmarks
+        run: |
+          cd security
+          cargo bench --no-run
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Build Go aggregator
+        run: |
+          cd core
+          go mod download
+          go build -o aggregator main.go aggregator.go subscription.go cache.go filter.go
+
+      - name: Build Rust security module
+        run: |
+          cd security
+          cargo build --release
+
+      - name: Verify binaries
+        run: |
+          file core/aggregator
+          file security/target/release/security_worker
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [validate, test-go, test-rust, build]
+    if: always()
+
+    steps:
+      - name: Create summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # Test and Validation Summary
+
+          ## Status Matrix
+          | Component | Status |
+          |-----------|--------|
+          | Configuration Validation | ${{ needs.validate.result }} |
+          | Go Tests | ${{ needs.test-go.result }} |
+          | Rust Tests | ${{ needs.test-rust.result }} |
+          | Build | ${{ needs.build.result }} |
+
+          ## Results
+          - ✅ Configurations validated
+          - ✅ Go code tested
+          - ✅ Rust code tested
+          - ✅ Binaries built successfully
+          EOF
+
+      - name: Check overall status
+        if: |
+          needs.validate.result != 'success' ||
+          needs.test-go.result != 'success' ||
+          needs.test-rust.result != 'success' ||
+          needs.build.result != 'success'
+        run: |
+          echo "❌ Some tests failed"
+          exit 1

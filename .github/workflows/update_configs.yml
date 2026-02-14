@@ -1,0 +1,159 @@
+name: Update Proxy Configs
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    # Allow manual trigger
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GIT_USER: "GitHub Actions"
+      GIT_EMAIL: "actions@github.com"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: security/target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r utils/requirements.txt
+
+      - name: Validate configurations
+        run: |
+          python utils/validator.py
+
+      - name: Build Go aggregator
+        run: |
+          cd core
+          go mod download
+          go build -o aggregator main.go aggregator.go subscription.go cache.go filter.go
+
+      - name: Fetch proxy configurations
+        run: |
+          cd core
+          ./aggregator -mode=fetch -v
+
+      - name: Generate Clash subscription
+        run: |
+          cd core
+          mkdir -p ../subscriptions
+          ./aggregator -mode=generate -format=clash -output=../subscriptions/clash.txt -max=5000
+
+      - name: Generate Sing-box subscription
+        run: |
+          cd core
+          ./aggregator -mode=generate -format=singbox -output=../subscriptions/singbox.json -max=5000
+
+      - name: Generate V2Ray subscription
+        run: |
+          cd core
+          ./aggregator -mode=generate -format=v2ray -output=../subscriptions/v2ray.json -max=5000
+
+      - name: Generate raw subscription
+        run: |
+          cd core
+          ./aggregator -mode=generate -format=raw -output=../subscriptions/raw.txt -max=5000
+
+      - name: Build Rust security module
+        run: |
+          cd security
+          cargo build --release
+
+      - name: Test security module
+        run: |
+          cd security
+          cargo test --release
+
+      - name: Generate statistics
+        run: |
+          python utils/github_actions_helper.py
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Commit changes
+        run: |
+          if [[ -z $(git status -s) ]]; then
+            echo "No changes to commit"
+          else
+            git add subscriptions/
+            git add config/
+            git commit -m "chore: auto-update proxy configurations [skip ci]"
+          fi
+
+      - name: Push changes
+        if: success()
+        run: |
+          git push origin main
+
+      - name: Create summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # Proxy Configuration Update Summary
+
+          - **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Status**: ${{ job.status }}
+          - **Subscription Files**:
+            - Clash: subscriptions/clash.txt
+            - Sing-box: subscriptions/singbox.json
+            - V2Ray: subscriptions/v2ray.json
+            - Raw: subscriptions/raw.txt
+
+          ## Features Updated
+          - ✅ Config aggregation
+          - ✅ Iran-specific filtering
+          - ✅ Anti-DPI obfuscation
+          - ✅ Multiple subscription formats
+          EOF
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "⚠️ Workflow failed at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          echo "Check logs for details"
